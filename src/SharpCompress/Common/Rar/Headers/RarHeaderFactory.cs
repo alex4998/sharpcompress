@@ -216,7 +216,7 @@ namespace SharpCompress.Common.Rar.Headers
                                 break;
                             case StreamingMode.Streaming:
                                 {
-                                    var ms = new ReadOnlySubStream(reader.BaseStream, fh.CompressedSize);
+                                    var ms = new ReadOnlyStream(reader.BaseStream, fh.CompressedSize);
                                     if (fh.Salt == null)
                                     {
                                         fh.PackedStream = ms;

@@ -57,7 +57,7 @@ namespace SharpCompress.Common.SevenZip
             {
                 folderStream.Skip(skipSize);
             }
-            return new ReadOnlySubStream(folderStream, Header.Size);
+            return new ReadOnlyStream(folderStream, Header.Size);
         }
 
         public CompressionType CompressionType

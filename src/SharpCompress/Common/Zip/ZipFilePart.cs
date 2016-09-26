@@ -150,7 +150,7 @@ namespace SharpCompress.Common.Zip
             }
             else
             {
-                plainStream = new ReadOnlySubStream(plainStream, Header.CompressedSize); //make sure AES doesn't close
+                plainStream = new ReadOnlyStream(plainStream, Header.CompressedSize); //make sure AES doesn't close
             }
             if (Header.PkwareTraditionalEncryptionData != null)
             {

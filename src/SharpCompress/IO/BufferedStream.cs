@@ -2,21 +2,19 @@
 
 namespace SharpCompress.IO
 {
-    internal class ReadOnlySubStream : Stream
+    internal class BufferedStream : Stream
     {
-        public ReadOnlySubStream(Stream stream, long bytesToRead)
-            : this(stream, null, bytesToRead)
-        {
-        }
+        private long position;
+        private int cacheOffset;
+        private int cacheLength;
+        private byte[] cache;
 
-        public ReadOnlySubStream(Stream stream, long? origin, long bytesToRead)
+        public BufferedStream(Stream stream, long origin, long bytesToRead)
         {
             Stream = stream;
-            if (origin != null)
-            {
-                stream.Position = origin.Value;
-            }
+            position = origin;
             BytesLeftToRead = bytesToRead;
+            cache = new byte[32 << 10];
         }
 
         protected override void Dispose(bool disposing)
@@ -64,16 +62,29 @@ namespace SharpCompress.IO
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            if (BytesLeftToRead < count)
-            {
+            if (count > BytesLeftToRead)
                 count = (int)BytesLeftToRead;
-            }
-            int read = Stream.Read(buffer, offset, count);
-            if (read > 0)
+
+            if (count > 0)
             {
-                BytesLeftToRead -= read;
+                if (cacheLength == 0)
+                {
+                    cacheOffset = 0;
+                    Stream.Position = position;
+                    cacheLength = Stream.Read(cache, 0, cache.Length);
+                    position += cacheLength;
+                }
+
+                if (count > cacheLength)
+                    count = cacheLength;
+
+                System.Buffer.BlockCopy(cache, cacheOffset, buffer, offset, count);
+                cacheOffset += count;
+                cacheLength -= count;
+                BytesLeftToRead -= count;
             }
-            return read;
+
+            return count;
         }
 
         public override long Seek(long offset, SeekOrigin origin)

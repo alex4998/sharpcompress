@@ -3,11 +3,11 @@ using System.IO;
 
 namespace SharpCompress.IO
 {
-    internal class CountingWritableSubStream : Stream
+    internal class CountingWritableStream : Stream
     {
-        private Stream writableStream;
+        private readonly Stream writableStream;
 
-        internal CountingWritableSubStream(Stream stream)
+        public CountingWritableStream(Stream stream)
         {
             writableStream = stream;
         }

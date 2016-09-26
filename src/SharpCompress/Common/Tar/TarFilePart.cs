@@ -26,7 +26,7 @@ namespace SharpCompress.Common.Tar
             if (seekableStream != null)
             {
                 seekableStream.Position = Header.DataStartPosition.Value;
-                return new ReadOnlySubStream(seekableStream, Header.Size);
+                return new ReadOnlyStream(seekableStream, Header.Size);
             }
             return Header.PackedStream;
         }

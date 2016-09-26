@@ -43,6 +43,32 @@ namespace SharpCompress.Common.Zip
             return encryptor;
         }
 
+        public static PkwareTraditionalEncryptionData ForWrite(string password, uint crc, out byte[] encryptionHeader) {
+            var encryptor = new PkwareTraditionalEncryptionData(password);
+
+            var random = new Random();
+            var plainTextHeader = new byte[12];
+            random.NextBytes(plainTextHeader);
+
+            plainTextHeader[11] = (byte)((crc >> 24) & 0xff);
+
+            encryptionHeader = encryptor.Encrypt(plainTextHeader, plainTextHeader.Length);
+            return encryptor;
+        }
+
+        public static PkwareTraditionalEncryptionData ForWrite(string password, DateTime? modificationTime, out byte[] encryptionHeader) {
+            var encryptor = new PkwareTraditionalEncryptionData(password);
+
+            var random = new Random();
+            var plainTextHeader = new byte[12];
+            random.NextBytes(plainTextHeader);
+
+            uint timeBlob = modificationTime.DateTimeToDosTime();
+            plainTextHeader[11] = (byte)((timeBlob >> 8) & 0xff);
+
+            encryptionHeader = encryptor.Encrypt(plainTextHeader, plainTextHeader.Length);
+            return encryptor;
+        }
 
         public byte[] Decrypt(byte[] cipherText, int length)
         {

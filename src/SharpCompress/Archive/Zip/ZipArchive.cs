@@ -211,7 +211,7 @@ namespace SharpCompress.Archive.Zip
                                        IEnumerable<ZipArchiveEntry> oldEntries,
                                        IEnumerable<ZipArchiveEntry> newEntries)
         {
-            using (var writer = new ZipWriter(stream, compressionInfo, string.Empty))
+            using (var writer = new ZipWriter(stream, compressionInfo, null))
             {
                 foreach (var entry in oldEntries.Concat(newEntries)
                                                 .Where(x => !x.IsDirectory))

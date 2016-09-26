@@ -1,8 +1,10 @@
 ﻿using System;
 using System.IO;
+
 using SharpCompress.Common.SevenZip;
 using SharpCompress.Compressor.LZMA.Utilites;
-using SharpCompress.IO;
+
+using BufferedStream = SharpCompress.IO.BufferedStream;
 
 namespace SharpCompress.Compressor.LZMA
 {
@@ -162,7 +164,7 @@ namespace SharpCompress.Compressor.LZMA
             Stream[] inStreams = new Stream[folderInfo.PackStreams.Count];
             for (int j = 0; j < folderInfo.PackStreams.Count; j++)
             {
-                inStreams[j] = new BufferedSubStream(inStream, startPos, packSizes[j]);
+                inStreams[j] = new BufferedStream(inStream, startPos, packSizes[j]);
                 startPos += packSizes[j];
             }
 

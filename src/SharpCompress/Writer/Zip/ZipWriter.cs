@@ -19,18 +19,26 @@ namespace SharpCompress.Writer.Zip
     public class ZipWriter : AbstractWriter
     {
         private readonly ZipCompressionInfo zipCompressionInfo;
+        private readonly string password;
         private readonly PpmdProperties ppmdProperties = new PpmdProperties(); // Caching properties to speed up PPMd
         private readonly List<ZipCentralDirectoryEntry> entries = new List<ZipCentralDirectoryEntry>();
         private readonly string zipComment;
         private long streamPosition;
 
-        public ZipWriter(Stream destination, CompressionInfo compressionInfo, string zipComment, bool leaveOpen = false)
+        internal ZipWriter(Stream destination, CompressionInfo compressionInfo, string zipComment, string password = null, bool leaveOpen = false)
             : base(ArchiveType.Zip)
         {
             this.zipComment = zipComment ?? string.Empty;
 
             this.zipCompressionInfo = new ZipCompressionInfo(compressionInfo);
+            this.password = password;
+
             InitalizeStream(destination, !leaveOpen);
+        }
+
+        public static ZipWriter Open(Stream stream, CompressionInfo compressionInfo, string zipComment, string password = null, bool leaveOpen = false) {
+            stream.CheckNotNull("stream");
+            return new ZipWriter(stream, compressionInfo, zipComment, password, leaveOpen);
         }
 
         protected override void Dispose(bool isDisposing)
@@ -49,33 +57,62 @@ namespace SharpCompress.Writer.Zip
 
         public override void Write(string entryPath, Stream source, DateTime? modificationTime)
         {
-            Write(entryPath, source, modificationTime, null);
+            // UNDONE: This method will fail if the source stream is not seekable because Crc32 will iterate through the stream and won't return the position back
+            Write(entryPath, source, modificationTime, null, null, String.IsNullOrEmpty(password) ? (Crc32?)null : new Crc32(source));
         }
 
-        public void Write(string entryPath, Stream source, DateTime? modificationTime, string comment, CompressionInfo compressionInfo = null)
+        public void Write(string entryPath, Stream source, DateTime? modificationTime, string comment, string password = null, Crc32? crc = null, CompressionInfo compressionInfo = null)
         {
-            using (Stream output = WriteToStream(entryPath, modificationTime, comment, compressionInfo))
+            using (Stream output = WriteToStream(entryPath, modificationTime, comment, password, crc, compressionInfo))
             {
                 source.TransferTo(output);
             }
         }
 
-        public Stream WriteToStream(string entryPath, DateTime? modificationTime, string comment, CompressionInfo compressionInfo = null)
+        public Stream WriteToStream(string entryPath, DateTime? modificationTime, string comment, string password = null, Crc32? crc = null, CompressionInfo compressionInfo = null)
         {
             entryPath = NormalizeFilename(entryPath);
             modificationTime = modificationTime ?? DateTime.Now;
-            comment = comment ?? "";
-            var entry = new ZipCentralDirectoryEntry
-                            {
-                                Comment = comment,
-                                FileName = entryPath,
-                                ModificationTime = modificationTime,
-                                HeaderOffset = (uint) streamPosition,
-                            };
+            comment = comment ?? string.Empty;
 
-            var headersize = (uint)WriteHeader(entryPath, modificationTime, compressionInfo);
+            var explicitPassword = password ?? this.password;
+            bool doEncryption = !String.IsNullOrEmpty(explicitPassword);
+
+            var entry = new ZipCentralDirectoryEntry() {
+                Comment = comment,
+                FileName = entryPath,
+                ModificationTime = modificationTime,
+                HeaderOffset = (uint) streamPosition,
+                IsEncrypted = doEncryption
+            };
+
+            var headersize = (uint)WriteHeader(entryPath, modificationTime, doEncryption, compressionInfo);
+
+            Stream outputStream;
+            if(doEncryption) {
+                byte[] encryptionHeader;
+                PkwareTraditionalEncryptionData pkwareTraditionalEncryptionData;
+                if(OutputStream.CanSeek) {
+                    if(crc.HasValue) {
+                        pkwareTraditionalEncryptionData = PkwareTraditionalEncryptionData.ForWrite(explicitPassword, (uint)(int)crc, out encryptionHeader);
+                    }
+                    else {
+                        throw new ArgumentNullException(nameof(crc), "Crc32 must be provided when password is set and target archive stream supports seeking");
+                    }
+                }
+                else {
+                    pkwareTraditionalEncryptionData = PkwareTraditionalEncryptionData.ForWrite(explicitPassword, modificationTime, out encryptionHeader);
+                }
+                OutputStream.Write(encryptionHeader, 0, encryptionHeader.Length);
+                entry.Compressed += (uint)encryptionHeader.Length;
+                outputStream = new PkwareTraditionalCryptoStream(OutputStream, pkwareTraditionalEncryptionData, CryptoMode.Encrypt);
+            }
+            else {
+                outputStream = OutputStream;
+            }
+
             streamPosition += headersize;
-            return new ZipWritingStream(this, OutputStream, entry, compressionInfo);
+            return new ZipWritingStream(this, outputStream, entry, compressionInfo);
         }
 
         private string NormalizeFilename(string filename)
@@ -89,9 +126,10 @@ namespace SharpCompress.Writer.Zip
             return filename.Trim('/');
         }
 
-        private int WriteHeader(string filename, DateTime? modificationTime, CompressionInfo compressionInfo = null)
+        private int WriteHeader(string filename, DateTime? modificationTime, bool doEncryption, CompressionInfo compressionInfo)
         {
             var explicitZipCompressionInfo = compressionInfo != null ? new ZipCompressionInfo(compressionInfo) : this.zipCompressionInfo;
+
             byte[] encodedFilename = ArchiveEncoding.Default.GetBytes(filename);
 
             OutputStream.Write(DataConverter.LittleEndian.GetBytes(ZipHeaderFactory.ENTRY_HEADER_BYTES), 0, 4);
@@ -103,7 +141,10 @@ namespace SharpCompress.Writer.Zip
 		    {
 			    OutputStream.Write(new byte[] {63, 0}, 0, 2); //version says we used PPMd or LZMA
 		    }            
-            HeaderFlags flags = ArchiveEncoding.Default == Encoding.UTF8 ? HeaderFlags.UTF8 : (HeaderFlags)0;
+            HeaderFlags flags = (ArchiveEncoding.Default == Encoding.UTF8) ? HeaderFlags.UTF8 : HeaderFlags.Undefined;
+            if(doEncryption) {
+                flags |= HeaderFlags.Encrypted;
+            }
             if (!OutputStream.CanSeek)
             {
                 flags |= HeaderFlags.UsePostDataDescriptor;
@@ -147,22 +188,22 @@ namespace SharpCompress.Writer.Zip
 
         #region Nested type: ZipWritingStream
 
-        internal class ZipWritingStream : Stream
+        private class ZipWritingStream : Stream
         {
+            private readonly ZipWriter writer;
+
             private readonly CRC32 crc = new CRC32();
             private readonly ZipCentralDirectoryEntry entry;
-            private readonly Stream originalStream;
-            private readonly Stream writeStream;
-            private readonly ZipWriter writer;
             private readonly ZipCompressionInfo compressionInfo;
-            private CountingWritableSubStream counting;
             private uint decompressed;
 
-            internal ZipWritingStream(ZipWriter writer, Stream originalStream, ZipCentralDirectoryEntry entry, CompressionInfo compressionInfo)
+            private readonly Stream writeStream;
+            private CountingWritableStream counting;
+
+            public ZipWritingStream(ZipWriter writer, Stream originalStream, ZipCentralDirectoryEntry entry, CompressionInfo compressionInfo)
             {
                 this.writer = writer;
-                this.originalStream = originalStream;
-                this.writer = writer;
+
                 this.entry = entry;
 				this.compressionInfo = compressionInfo == null ? writer.zipCompressionInfo : new ZipCompressionInfo(compressionInfo);
                 writeStream = GetWriteStream(originalStream);
@@ -194,46 +235,32 @@ namespace SharpCompress.Writer.Zip
                 set { throw new NotSupportedException(); }
             }
 
-            private Stream GetWriteStream(Stream writeStream)
+            private Stream GetWriteStream(Stream originalStream)
             {
-                counting = new CountingWritableSubStream(writeStream);
-                Stream output = counting;
+                counting = new CountingWritableStream(originalStream);
+
                 switch (compressionInfo.Compression)
                 {
                     case ZipCompressionMethod.None:
-                        {
-                            return output;
-                        }
+                        return counting;
                     case ZipCompressionMethod.Deflate:
-                        {
-                            return new DeflateStream(counting, CompressionMode.Compress, compressionInfo.DeflateCompressionLevel,
-                                                     true);
-                        }
+                        return new DeflateStream(counting, CompressionMode.Compress, compressionInfo.DeflateCompressionLevel, true);
                     case ZipCompressionMethod.BZip2:
-                        {
-                            return new BZip2Stream(counting, CompressionMode.Compress, true);
-                        }
+                        return new BZip2Stream(counting, CompressionMode.Compress, true);
                     case ZipCompressionMethod.LZMA:
-                        {
-                            counting.WriteByte(9);
-                            counting.WriteByte(20);
-                            counting.WriteByte(5);
-                            counting.WriteByte(0);
+                        counting.WriteByte(9);
+                        counting.WriteByte(20);
+                        counting.WriteByte(5);
+                        counting.WriteByte(0);
 
-                            LzmaStream lzmaStream = new LzmaStream(new LzmaEncoderProperties(!originalStream.CanSeek),
-                                                                   false, counting);
-                            counting.Write(lzmaStream.Properties, 0, lzmaStream.Properties.Length);
-                            return lzmaStream;
-                        }
+                        LzmaStream lzmaStream = new LzmaStream(new LzmaEncoderProperties(!originalStream.CanSeek), false, counting);
+                        counting.Write(lzmaStream.Properties, 0, lzmaStream.Properties.Length);
+                        return lzmaStream;
                     case ZipCompressionMethod.PPMd:
-                        {
-                            counting.Write(writer.ppmdProperties.Properties, 0, 2);
-                            return new PpmdStream(writer.ppmdProperties, counting, true);
-                        }
+                        counting.Write(writer.ppmdProperties.Properties, 0, 2);
+                        return new PpmdStream(writer.ppmdProperties, counting, true);
                     default:
-                        {
-                            throw new NotSupportedException("CompressionMethod: " + compressionInfo.Compression);
-                        }
+                        throw new NotSupportedException("CompressionMethod: " + compressionInfo.Compression);
                 }
             }
 
@@ -244,21 +271,19 @@ namespace SharpCompress.Writer.Zip
                 {
                     writeStream.Dispose();
                     entry.Crc = (uint) crc.Crc32Result;
-                    entry.Compressed = counting.Count;
+                    entry.Compressed += counting.Count;
                     entry.Decompressed = decompressed;
-                    if (originalStream.CanSeek)
+                    if (writer.OutputStream.CanSeek)
                     {
-                        originalStream.Position = entry.HeaderOffset + 6;
-                        originalStream.WriteByte(0);
-                        originalStream.Position = entry.HeaderOffset + 14;
-                        writer.WriteFooter(entry.Crc, counting.Count, decompressed);
-                        originalStream.Position = writer.streamPosition + entry.Compressed;
+                        writer.OutputStream.Position = entry.HeaderOffset + 14;
+                        writer.WriteFooter(entry.Crc, entry.Compressed, decompressed);
+                        writer.OutputStream.Position = writer.streamPosition + entry.Compressed;
                         writer.streamPosition += entry.Compressed;
                     }
                     else
                     {
-                        originalStream.Write(DataConverter.LittleEndian.GetBytes(ZipHeaderFactory.POST_DATA_DESCRIPTOR), 0, 4);
-                        writer.WriteFooter(entry.Crc, counting.Count, decompressed);
+                        writer.OutputStream.Write(DataConverter.LittleEndian.GetBytes(ZipHeaderFactory.POST_DATA_DESCRIPTOR), 0, 4);
+                        writer.WriteFooter(entry.Crc, entry.Compressed, decompressed);
                         writer.streamPosition += entry.Compressed + 16;
                     }
                     writer.entries.Add(entry);

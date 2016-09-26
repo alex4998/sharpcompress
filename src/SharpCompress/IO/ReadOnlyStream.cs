@@ -1,39 +1,29 @@
 ﻿using System.IO;
 
-namespace SharpCompress.Common.Tar
+namespace SharpCompress.IO
 {
-    internal class TarReadOnlySubStream : Stream
+    internal class ReadOnlyStream : Stream
     {
-        private bool isDisposed;
-        private long amountRead;
+        public ReadOnlyStream(Stream stream, long bytesToRead)
+            : this(stream, null, bytesToRead)
+        {
+        }
 
-        public TarReadOnlySubStream(Stream stream, long bytesToRead)
+        public ReadOnlyStream(Stream stream, long? origin, long bytesToRead)
         {
             Stream = stream;
+            if (origin != null)
+            {
+                stream.Position = origin.Value;
+            }
             BytesLeftToRead = bytesToRead;
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (isDisposed)
-            {
-                return;
-            }
-            isDisposed = true;
             if (disposing)
             {
-                long skipBytes = amountRead % 512;
-                if (skipBytes == 0)
-                {
-                    return;
-                }
-                skipBytes = 512 - skipBytes;
-                if (skipBytes == 0)
-                {
-                    return;
-                }
-                var buffer = new byte[skipBytes];
-                Stream.ReadFully(buffer);
+                //Stream.Dispose();
             }
         }
 
@@ -82,7 +72,6 @@ namespace SharpCompress.Common.Tar
             if (read > 0)
             {
                 BytesLeftToRead -= read;
-                amountRead += read;
             }
             return read;
         }

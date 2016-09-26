@@ -12,7 +12,7 @@ namespace SharpCompress.Test
 {
     public class TestBase : IDisposable
     {
-        protected string SOLUTION_BASE_PATH=null;
+        protected string SOLUTION_BASE_PATH;
         protected string TEST_ARCHIVES_PATH;
         protected string ORIGINAL_FILES_PATH;
         protected string MISC_TEST_FILES_PATH;

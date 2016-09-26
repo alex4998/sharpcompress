@@ -31,7 +31,7 @@ namespace SharpCompress.Common.Tar
                             break;
                         case StreamingMode.Streaming:
                             {
-                                header.PackedStream = new TarReadOnlySubStream(stream, header.Size);
+                                header.PackedStream = new TarReadOnlyStream(stream, header.Size);
                             }
                             break;
                         default:

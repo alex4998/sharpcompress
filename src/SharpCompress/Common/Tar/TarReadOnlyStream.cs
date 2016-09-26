@@ -1,27 +1,39 @@
 ﻿using System.IO;
 
-namespace SharpCompress.IO
+namespace SharpCompress.Common.Tar
 {
-    internal class BufferedSubStream : Stream
+    internal class TarReadOnlyStream : Stream
     {
-        private long position;
-        private int cacheOffset;
-        private int cacheLength;
-        private byte[] cache;
+        private bool isDisposed;
+        private long amountRead;
 
-        public BufferedSubStream(Stream stream, long origin, long bytesToRead)
+        public TarReadOnlyStream(Stream stream, long bytesToRead)
         {
             Stream = stream;
-            position = origin;
             BytesLeftToRead = bytesToRead;
-            cache = new byte[32 << 10];
         }
 
         protected override void Dispose(bool disposing)
         {
+            if (isDisposed)
+            {
+                return;
+            }
+            isDisposed = true;
             if (disposing)
             {
-                //Stream.Dispose();
+                long skipBytes = amountRead % 512;
+                if (skipBytes == 0)
+                {
+                    return;
+                }
+                skipBytes = 512 - skipBytes;
+                if (skipBytes == 0)
+                {
+                    return;
+                }
+                var buffer = new byte[skipBytes];
+                Stream.ReadFully(buffer);
             }
         }
 
@@ -62,29 +74,17 @@ namespace SharpCompress.IO
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            if (count > BytesLeftToRead)
-                count = (int)BytesLeftToRead;
-
-            if (count > 0)
+            if (BytesLeftToRead < count)
             {
-                if (cacheLength == 0)
-                {
-                    cacheOffset = 0;
-                    Stream.Position = position;
-                    cacheLength = Stream.Read(cache, 0, cache.Length);
-                    position += cacheLength;
-                }
-
-                if (count > cacheLength)
-                    count = cacheLength;
-
-                System.Buffer.BlockCopy(cache, cacheOffset, buffer, offset, count);
-                cacheOffset += count;
-                cacheLength -= count;
-                BytesLeftToRead -= count;
+                count = (int)BytesLeftToRead;
             }
-
-            return count;
+            int read = Stream.Read(buffer, offset, count);
+            if (read > 0)
+            {
+                BytesLeftToRead -= read;
+                amountRead += read;
+            }
+            return read;
         }
 
         public override long Seek(long offset, SeekOrigin origin)

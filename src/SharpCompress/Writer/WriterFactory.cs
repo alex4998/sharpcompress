@@ -31,7 +31,7 @@ namespace SharpCompress.Writer
                     }
                 case ArchiveType.Zip:
                     {
-                        return new ZipWriter(stream, compressionInfo, null, leaveOpen);
+                        return new ZipWriter(stream, compressionInfo, null, null, leaveOpen);
                     }
                 case ArchiveType.Tar:
                     {

@@ -9,16 +9,20 @@ namespace SharpCompress.Writer.Zip
 {
     internal class ZipCentralDirectoryEntry
     {
-        internal string FileName { get; set; }
-        internal DateTime? ModificationTime { get; set; }
-        internal string Comment { get; set; }
-        internal uint Crc { get; set; }
-        internal uint HeaderOffset { get; set; }
-        internal uint Compressed { get; set; }
-        internal uint Decompressed { get; set; }
+        public string FileName { get; set; }
+        public DateTime? ModificationTime { get; set; }
+        public string Comment { get; set; }
+        public uint Crc { get; set; }
+        public uint HeaderOffset { get; set; }
+        public uint Compressed { get; set; }
+        public uint Decompressed { get; set; }
+        public bool IsEncrypted { get; set; }
 
-
-        internal uint Write(Stream outputStream, ZipCompressionMethod compression)
+        // TODO: This method looks like ZipWriter.WriteHeader. Ideally the logic
+        // has to be extracted into a common method and be called from both places
+        // or better refactoring has to be done to keep the header info in a separate
+        // class and use it in the reader and writer.
+        public uint Write(Stream outputStream, ZipCompressionMethod compression)
         {
             byte[] encodedFilename = Encoding.UTF8.GetBytes(FileName);
             byte[] encodedComment = Encoding.UTF8.GetBytes(Comment);
@@ -26,7 +30,10 @@ namespace SharpCompress.Writer.Zip
             //constant sig, then version made by, compabitility, then version to extract
             outputStream.Write(new byte[] {80, 75, 1, 2, 0x14, 0, 0x0A, 0}, 0, 8);
             HeaderFlags flags = HeaderFlags.UTF8;
-            if (!outputStream.CanSeek)
+            if(IsEncrypted) {
+                flags |= HeaderFlags.Encrypted;
+            }
+            if(!outputStream.CanSeek)
             {
                 flags |= HeaderFlags.UsePostDataDescriptor;
                 if (compression == ZipCompressionMethod.LZMA)

@@ -1376,7 +1376,7 @@ namespace SharpCompress.Common.SevenZip
 
             Stream s = GetCachedDecoderStream(_db, folderIndex, pw);
             s.Position = skipSize;
-            return new ReadOnlySubStream(s, _db.Files[fileIndex].Size);
+            return new ReadOnlyStream(s, _db.Files[fileIndex].Size);
         }
 
         public void Extract(ArchiveDatabase _db, int[] indices, IPasswordProvider pw)
