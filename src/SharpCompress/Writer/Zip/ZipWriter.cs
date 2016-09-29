@@ -61,6 +61,15 @@ namespace SharpCompress.Writer.Zip
             Write(entryPath, source, modificationTime, null, null, String.IsNullOrEmpty(password) ? (Crc32?)null : new Crc32(source));
         }
 
+        public void WriteDirectoryEntry(string entryPath, DateTime? modificationTime, string comment) {
+            entryPath = entryPath.TrimEnd('\\');
+            if(!entryPath.EndsWith("/")) {
+                entryPath += '/';
+            }
+            using(WriteToStream(entryPath, modificationTime, comment, null, new Crc32(0))) {
+            }
+        }
+
         public void Write(string entryPath, Stream source, DateTime? modificationTime, string comment, string password = null, Crc32? crc = null, CompressionInfo compressionInfo = null)
         {
             using (Stream output = WriteToStream(entryPath, modificationTime, comment, password, crc, compressionInfo))
@@ -123,7 +132,7 @@ namespace SharpCompress.Writer.Zip
             if (pos >= 0)
                 filename = filename.Remove(0, pos + 1);
 
-            return filename.Trim('/');
+            return filename.TrimStart('/');
         }
 
         private int WriteHeader(string filename, DateTime? modificationTime, bool doEncryption, CompressionInfo compressionInfo)

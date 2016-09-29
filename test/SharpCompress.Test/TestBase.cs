@@ -15,9 +15,13 @@ namespace SharpCompress.Test
         protected string SOLUTION_BASE_PATH;
         protected string TEST_ARCHIVES_PATH;
         protected string ORIGINAL_FILES_PATH;
+        protected string ORIGINAL_FILES_WITH_EMPTY_PATH;
         protected string MISC_TEST_FILES_PATH;
         public string SCRATCH_FILES_PATH;
         protected string SCRATCH2_FILES_PATH;
+
+        protected bool UseExtensionInsteadOfNameToVerify { get; set; }
+
         protected IEnumerable<string> GetRarArchives()
         {
             yield return Path.Combine(TEST_ARCHIVES_PATH, "Rar.none.rar");
@@ -158,8 +162,6 @@ namespace SharpCompress.Test
             }
         }
 
-        protected bool UseExtensionInsteadOfNameToVerify { get; set; }
-
         protected void VerifyFilesByExtension()
         {
             var extracted =
@@ -176,6 +178,31 @@ namespace SharpCompress.Test
                 Assert.True(extracted.Contains(orig.Key));
 
                 CompareFilesByPath(orig.Single(), extracted[orig.Key].Single());
+            }
+        }
+
+        protected void VerifyDirectoryTree(string strOriginalPath) {
+            ILookup<string, string> objExtracted = Directory.EnumerateFileSystemEntries(SCRATCH_FILES_PATH, "*.*", SearchOption.AllDirectories)
+                .ToLookup(path => path.Substring(SCRATCH_FILES_PATH.Length));
+
+            ILookup<string, string> objOriginal = Directory.EnumerateFileSystemEntries(strOriginalPath, "*.*", SearchOption.AllDirectories)
+                .ToLookup(path => path.Substring(ORIGINAL_FILES_WITH_EMPTY_PATH.Length));
+
+            Assert.Equal(objExtracted.Count, objOriginal.Count);
+
+            foreach(IGrouping<string, string> objItem in objOriginal) {
+                Assert.True(objExtracted.Contains(objItem.Key));
+
+                string strOriginalPathName = objItem.Single();
+                if(Directory.Exists(strOriginalPathName)) {
+                    Assert.Equal(strOriginalPathName.Substring(ORIGINAL_FILES_WITH_EMPTY_PATH.Length), objExtracted[objItem.Key].Single().Substring(SCRATCH_FILES_PATH.Length));
+                }
+                else if(File.Exists(strOriginalPathName)) {
+                    CompareFilesByPath(strOriginalPathName, objExtracted[objItem.Key].Single());
+                }
+                else {
+                    throw new InvalidOperationException($@"Unable to validate '{strOriginalPathName}' path");
+                }
             }
         }
 
@@ -231,6 +258,7 @@ namespace SharpCompress.Test
             SOLUTION_BASE_PATH = Path.GetDirectoryName(PlatformServices.Default.Application.ApplicationBasePath.Substring(0, index));
             TEST_ARCHIVES_PATH = Path.Combine(SOLUTION_BASE_PATH, "TestArchives", "Archives");
             ORIGINAL_FILES_PATH = Path.Combine(SOLUTION_BASE_PATH, "TestArchives", "Original");
+            ORIGINAL_FILES_WITH_EMPTY_PATH = Path.Combine(SOLUTION_BASE_PATH, "TestArchives", "OriginalWithEmpty");
             MISC_TEST_FILES_PATH = Path.Combine(SOLUTION_BASE_PATH, "TestArchives", "MiscTest");
             SCRATCH_FILES_PATH = Path.Combine(SOLUTION_BASE_PATH, "TestArchives", "Scratch");
             SCRATCH2_FILES_PATH = Path.Combine(SOLUTION_BASE_PATH, "TestArchives", "Scratch2");

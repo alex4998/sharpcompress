@@ -58,6 +58,39 @@ namespace SharpCompress.Test
         }
 
         [Fact]
+        public void Zip_With_Empty() {
+            ResetScratch();
+            using(Stream objStream = File.OpenWrite(Path.Combine(SCRATCH2_FILES_PATH, "Zip.deflate.zip"))) {
+                using(ZipWriter objWriter = ZipWriter.Open(objStream, new CompressionInfo() { Type = CompressionType.Deflate }, null)) {
+                    foreach(string strItem in Directory.EnumerateFileSystemEntries(ORIGINAL_FILES_WITH_EMPTY_PATH, "*.*", SearchOption.AllDirectories)) {
+                        if(Directory.Exists(strItem)) {
+                            objWriter.WriteDirectoryEntry(strItem.Substring(ORIGINAL_FILES_WITH_EMPTY_PATH.Length), DateTime.UtcNow, null);
+                        }
+                        else if(File.Exists(strItem)) {
+                            using(FileStream objReadStream = File.OpenRead(strItem)) {
+                                using(Stream objWriteStream = objWriter.WriteToStream(strItem.Substring(ORIGINAL_FILES_WITH_EMPTY_PATH.Length), DateTime.UtcNow, null)) {
+                                    objReadStream.TransferTo(objWriteStream);
+                                }
+                            }
+                        }
+                        else {
+                            throw new InvalidOperationException($@"Unable to validate '{strItem}' path");
+                        }
+                    }
+                }
+                Assert.False(objStream.CanWrite);
+            }
+
+            using(Stream stream = File.OpenRead(Path.Combine(SCRATCH2_FILES_PATH, "Zip.deflate.zip"))) {
+                using(var reader = ZipReader.Open(stream, null, Options.None)) {
+                    reader.WriteAllToDirectory(SCRATCH_FILES_PATH, ExtractOptions.ExtractFullPath);
+                }
+                Assert.False(stream.CanRead);
+            }
+            VerifyDirectoryTree(ORIGINAL_FILES_WITH_EMPTY_PATH);
+        }
+
+        [Fact]
         public void Zip_WithPassword_Unzip_Without() {
             ResetScratch();
             using(Stream stream = File.OpenWrite(Path.Combine(SCRATCH2_FILES_PATH, "Zip.deflate.noEmptyDirs.zip"))) {
@@ -153,6 +186,39 @@ namespace SharpCompress.Test
         [Fact]
         public void Zip_Rar_Encrypt_Write() {
             Assert.Throws<InvalidFormatException>(() => WriteWithPassword(CompressionType.Rar, "test", "Zip.deflate.noEmptyDirs.zip"));
+        }
+
+        [Fact]
+        public void Zip_Encrypt_With_Empty() {
+            ResetScratch();
+            using(Stream objStream = File.OpenWrite(Path.Combine(SCRATCH2_FILES_PATH, "Zip.deflate.zip"))) {
+                using(ZipWriter objWriter = ZipWriter.Open(objStream, new CompressionInfo() { Type = CompressionType.Deflate }, null, "test")) {
+                    foreach(string strItem in Directory.EnumerateFileSystemEntries(ORIGINAL_FILES_WITH_EMPTY_PATH, "*.*", SearchOption.AllDirectories)) {
+                        if(Directory.Exists(strItem)) {
+                            objWriter.WriteDirectoryEntry(strItem.Substring(ORIGINAL_FILES_WITH_EMPTY_PATH.Length), DateTime.UtcNow, null);
+                        }
+                        else if(File.Exists(strItem)) {
+                            using(FileStream objReadStream = File.OpenRead(strItem)) {
+                                using(Stream objWriteStream = objWriter.WriteToStream(strItem.Substring(ORIGINAL_FILES_WITH_EMPTY_PATH.Length), DateTime.UtcNow, null, null, new Crc32(objReadStream))) {
+                                    objReadStream.TransferTo(objWriteStream);
+                                }
+                            }
+                        }
+                        else {
+                            throw new InvalidOperationException($@"Unable to validate '{strItem}' path");
+                        }
+                    }
+                }
+                Assert.False(objStream.CanWrite);
+            }
+
+            using(Stream stream = File.OpenRead(Path.Combine(SCRATCH2_FILES_PATH, "Zip.deflate.zip"))) {
+                using(var reader = ZipReader.Open(stream, "test", Options.None)) {
+                    reader.WriteAllToDirectory(SCRATCH_FILES_PATH, ExtractOptions.ExtractFullPath);
+                }
+                Assert.False(stream.CanRead);
+            }
+            VerifyDirectoryTree(ORIGINAL_FILES_WITH_EMPTY_PATH);
         }
     }
 }
